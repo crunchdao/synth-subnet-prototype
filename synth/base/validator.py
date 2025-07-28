@@ -19,6 +19,7 @@
 
 
 import copy
+import time
 import numpy as np
 import asyncio
 import argparse
@@ -132,7 +133,10 @@ class BaseValidatorNeuron(BaseNeuron):
         try:
             while True:
                 # Run multiple forwards concurrently.
-                self.loop.run_until_complete(self.concurrent_forward())
+                # self.loop.run_until_complete(self.concurrent_forward())
+
+                # HACK: Fake "concurrent_forward" wait, will be called in the small webserver now
+                time.sleep(10)
 
                 # Check if we should exit.
                 if self.should_exit:

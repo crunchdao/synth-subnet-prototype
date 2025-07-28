@@ -55,4 +55,6 @@ def generate_simulations(
         simulations.tolist(), start_time, time_increment
     )
 
+    print("hello")
+
     return predictions

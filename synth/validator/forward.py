@@ -238,6 +238,11 @@ def get_available_miners_and_update_metagraph_history(
     miners = []
     metagraph_info = []
     for uid in range(len(base_neuron.metagraph.S)):
+
+        # HACK: Only allow Enzo's registered miners and validators, 99 is the validator and cannot be used, it was just for testing
+        if uid not in [98, 99]:
+            continue
+
         uid_is_available = check_uid_availability(
             base_neuron.metagraph,
             uid,
@@ -253,6 +258,7 @@ def get_available_miners_and_update_metagraph_history(
                 "hotkey": base_neuron.metagraph.hotkeys[uid],
             }
         )
+        print(f"miner {uid}:", miners[-1])
 
         if uid_is_available:
             metagraph_item = {

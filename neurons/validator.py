@@ -118,7 +118,8 @@ class Validator(BaseValidatorNeuron):
     ):
         # wait until the next simulation
         next_iteration = request_time + timedelta(
-            minutes=60 / len(simulation_input_list)
+            # HACK: Force fast iteration
+            seconds=5
         )
         wait_time = timeout_until(next_iteration)
         bt.logging.info(
@@ -186,12 +187,14 @@ class Validator(BaseValidatorNeuron):
             await self.wait_till_next_simulation(
                 request_time, self.simulation_input_list
             )
+        
+        print("Finished forward_prompt() for all simulations")
 
     async def forward_score(self):
         # getting current time
         current_time = get_current_time()
 
-        next_iteration = current_time + timedelta(hours=1)
+        next_iteration = current_time + timedelta(seconds=10)
 
         async def wait_till_next_iteration():
             # wait until the next iteration
@@ -204,9 +207,12 @@ class Validator(BaseValidatorNeuron):
 
         # round current time to the closest minute and add extra minutes
         # to be sure we are after the start time of the prompt
-        scored_time = round_time_to_minutes(
-            current_time, 60, self.timeout_extra_seconds * 2
-        )
+        # scored_time = round_time_to_minutes(
+        #     current_time, 60, self.timeout_extra_seconds * 2
+        # )
+        
+        # HACK: Force fast iteration
+        scored_time = current_time + timedelta(seconds=10)
 
         # wait until the score_time
         wait_time = timeout_until(scored_time)
@@ -233,7 +239,8 @@ class Validator(BaseValidatorNeuron):
         )
 
         if not success:
-            await wait_till_next_iteration()
+            # HACK: Avoid waiting
+            # await wait_till_next_iteration()
             return
 
         # ================= Step 4 ================= #
@@ -251,7 +258,8 @@ class Validator(BaseValidatorNeuron):
         )
 
         if len(moving_averages_data) == 0:
-            await wait_till_next_iteration()
+            # HACK: Avoid waiting
+            # await wait_till_next_iteration()
             return
 
         # ================= Step 5 ================= #
@@ -266,13 +274,92 @@ class Validator(BaseValidatorNeuron):
             scored_time=scored_time,
         )
 
-        await wait_till_next_iteration()
+        # HACK: Avoid waiting
+        # await wait_till_next_iteration()
+
+        print("Finished forward_score() for all simulations")
 
     async def forward_miner(self, _: bt.Synapse) -> bt.Synapse:
         pass
 
 
+def webserve(validator: Validator):
+    from aiohttp import web
+
+    # HTML form as a multiline string
+    form_html = """
+    <!DOCTYPE html>
+    <html>
+    <body>
+        <form method="post" action="/submit">
+            <label for="asset">asset:</label><br>
+            <input type="text" id="asset" name="asset" value="BTC"><br>
+
+            <label for="time_increment">time_increment:</label><br>
+            <input type="number" id="time_increment" name="time_increment" min="0" step="1" value="300"><br>
+
+            <label for="time_length">time_length:</label><br>
+            <input type="number" id="time_length" name="time_length" min="0" step="1" value="86400"><br>
+
+            <label for="num_simulations">num_simulations:</label><br>
+            <input type="number" id="num_simulations" name="num_simulations" min="0" step="1" value="100"><br>
+
+            <input type="submit" value="Submit (look at console, no results is shown here and processing is slow)">
+        </form>
+    </body>
+    </html>
+    """
+
+    # HTML response page as a multiline string
+    response_html = """
+    <!DOCTYPE html>
+    <html>
+    <body>
+        <h1>Hello, {name}!</h1>
+        <p>Your form has been submitted successfully.</p>
+        <a href="/">Go back</a>
+    </body>
+    </html>
+    """
+
+    async def handle_get(request):
+        return web.Response(text=form_html, content_type='text/html')
+
+    async def handle_post(request):
+        data = await request.post()
+
+        # HACK: Fast way to send inputs instead of using parameters
+        previous_simulation_input_list = validator.simulation_input_list
+        current_loop = asyncio.get_event_loop()
+        try:
+            validator.simulation_input_list = [
+                SimulationInput(
+                    asset=data.get('asset', 'BTC'),
+                    time_increment=int(data.get('time_increment', 300)),
+                    time_length=int(data.get('time_length', 86400)),
+                    num_simulations=int(data.get('num_simulations', 100)),
+                ),
+            ]
+
+            # Scary stuff!
+            asyncio.set_event_loop(validator.loop)
+            await validator.concurrent_forward()
+        finally:
+            validator.simulation_input_list = previous_simulation_input_list
+            asyncio.set_event_loop(current_loop)
+
+        response = response_html.format(name="world")
+        return web.Response(text=response, content_type='text/html')
+
+    app = web.Application()
+    app.router.add_get('/', handle_get)
+    app.router.add_post('/submit', handle_post)
+
+    web.run_app(app)
+
+
 # The main function parses the configuration and runs the validator.
 if __name__ == "__main__":
     mp.set_start_method("spawn", force=True)
-    Validator().run()
+    with Validator() as validator:
+        webserve(validator)

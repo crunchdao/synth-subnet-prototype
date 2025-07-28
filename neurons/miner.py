@@ -87,11 +87,19 @@ class Miner(BaseMinerNeuron):
         Otherwise, allow the request to be processed further.
         """
 
+        print("synapse.dendrite", synapse.dendrite)
+
         if synapse.dendrite is None or synapse.dendrite.hotkey is None:
             bt.logging.warning(
                 "Received a request without a dendrite or hotkey."
             )
             return True, "Missing dendrite or hotkey"
+
+        # HACK: Only allow Enzo's registered validator
+        # TODO: Use blacklist exemptions instead (discovered after)
+        if synapse.dendrite.hotkey != "5Dz6WvbgM749zdv9pk6RPFcgJPv7fB7vSNnR1AJ518wtkKcs":
+            bt.logging.warning(f"Received a request from another validator: {synapse.dendrite.hotkey}")
+            return True, "not my own validator"
 
         if (
             not self.config.blacklist.allow_non_registered
